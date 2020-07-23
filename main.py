@@ -1,0 +1,113 @@
+from bs4 import BeautifulSoup
+import requests
+import csv
+import time
+import sys
+
+def get_html_body(url):
+	""" Returns BeautifulSoup tag object with HTML body """
+	page = requests.get(url)
+	soup = BeautifulSoup(page.content, 'html.parser')
+	html_body = soup.find('body')
+	return html_body
+
+def get_resource_list(base_url):
+	""" Returns list of html filenames """
+	list_ext = 'resourcelist.html'
+	html_body = get_html_body(base_url + list_ext)
+	body_tables = html_body.find_all('table')
+	ul_tags = body_tables[1].find_all('ul')
+	resource_list = [] # parsed list of individual resource html pages
+	for ul in ul_tags:
+		li_tags = ul.find_all('li')
+		for li in li_tags:
+			text = li.text[:-2].split(' ')[0] + '.html'
+			resource_list.append(text)
+	return resource_list
+
+def create_csv(base_url, resource_list, name, as_hyperlink=True):
+	""" Creates/overwrites csv file as name.csv """
+	filename = name + '.csv'
+	col_headers = ['Resource', 'Nesting', 'Resource Content Name', 'Flags', 'Cardinality', 'Datatype', 'Description']
+	
+	# Helper functions
+	hyperlink = lambda url, label: '=HYPERLINK(\"%s\",\"%s\")' % (url, label)
+	del_extension = lambda name, ext: name[0:name.find(ext)-1]
+
+	def parse_write_td_elements(csv_writer, resource, nestingHeader='Resource.DomainResource.'):
+		""" Performs HTML request, parsing, and <td> element writing to .csv"""
+		request_url = base_url + resource
+		struct_table = get_html_body(request_url).find('div', {'id': 'tbl-inner'}).table
+		# add static data
+		resource_name = del_extension(resource, 'html')
+		resource_link = hyperlink(request_url, resource_name) if as_hyperlink else resource_name
+		nesting = nestingHeader + resource_name # keep track of item nesting
+		curr_row = [resource_link, nesting]
+		# hacky soln: keep count of every 5th <td> element, and add row then
+		count = 0
+		for tr in struct_table.find_all('tr'):
+			for td in tr.find_all('td'):
+				curr_row.append(td.text)
+				count += 1
+				# adjust nesting on 1st item
+				if count % 5 == 1:
+					tag = td.find('a')
+					# only handle cases where item has an <a> tag
+					if tag != None: 
+						curr_title = str(tag['title'])
+						nesting = curr_title[:curr_title.find(' ')]
+						curr_text = td.text.strip() # remove ending whitespace character
+						if nesting != curr_text:
+							curr_row[1] = nestingHeader + del_extension(nesting, curr_text)
+				# append row every 5th item 
+				if count % 5 == 0:
+					writer.writerow(curr_row)
+					del curr_row[2:] # keep first two items
+					curr_row[1] = nesting
+	
+	# Start writing .csv
+	with open(filename, 'w', newline='') as csvfile:
+		# progress bar from: https://stackoverflow.com/a/3160819
+		toolbar_width = len(resource_list) // 3
+		toolbar_count = 0
+		sys.stdout.write("Creating %s.csv\n" % name)
+		sys.stdout.write("[%s]" % (" " * toolbar_width))
+		sys.stdout.flush()
+		sys.stdout.write("\b" * (toolbar_width+1)) # return to start of line, after '['
+		writer = csv.writer(csvfile, delimiter=',')
+		writer.writerow(col_headers)
+		# track in progress bar
+		# add 'Resource' and 'DomainResource' to .csv first
+		parse_write_td_elements(writer, 'Resource.html', nestingHeader='')
+		parse_write_td_elements(writer, 'DomainResource.html', nestingHeader='Resource.')
+		for resource in resource_list:
+			# get request, grab table for resource
+			parse_write_td_elements(writer, resource)
+			# update bar every third resource
+			toolbar_count += 1
+			if toolbar_count % 3 == 0:
+				sys.stdout.write("-")
+				sys.stdout.flush()
+		sys.stdout.write("]\n")
+
+if __name__ == '__main__':
+	# Ask user for as_hyperlink input
+	user_input = input("Save resource names in .csv as Excel hyperlinks? (Y/N): ")
+	if user_input.lower()[0] == 'y':
+		as_hyperlink = True
+	else:
+		as_hyperlink = False
+	
+	# save FHIR main pages
+	fhir_base_urls = [
+		'https://www.hl7.org/fhir/DSTU2/',
+		'https://www.hl7.org/fhir/STU3/',
+		'https://www.hl7.org/fhir/R4/'
+	]
+
+	# create csvs
+	start = len('https://www.hl7.org/fhir/')
+	for base_url in fhir_base_urls:
+		base_list = get_resource_list(base_url)
+		name = base_url[start:base_url.find('/', start)]
+		create_csv(base_url, base_list, name, as_hyperlink=as_hyperlink)
