@@ -32,33 +32,57 @@ def create_csv(base_url, resource_list, name, as_hyperlink=True):
 	
 	# Helper functions
 	hyperlink = lambda url, label: '=HYPERLINK(\"%s\",\"%s\")' % (url, label)
-	del_extension = lambda name, ext: name[0:name.find(ext)-1]
-
-	def parse_write_td_elements(csv_writer, resource, nestingHeader='Resource.DomainResource.'):
+	add_extension = lambda name, ext: '%s.%s' % (name, ext)
+	del_extension = lambda name: name[0:name.rfind('.')]
+	def parse_write_td_elements(csv_writer, resource, nestingHeader=''):
 		""" Performs HTML request, parsing, and <td> element writing to .csv"""
 		request_url = base_url + resource
 		struct_table = get_html_body(request_url).find('div', {'id': 'tbl-inner'}).table
-		# add static data
-		resource_name = del_extension(resource, 'html')
+		# Add static data
+		resource_name = del_extension(resource)
 		resource_link = hyperlink(request_url, resource_name) if as_hyperlink else resource_name
 		nesting = nestingHeader + resource_name # keep track of item nesting
 		curr_row = [resource_link, nesting]
+		# hacky soln: add 8 lines of static resource data inherited from Resource, DomainResource
+		inherited_from_Resource = [
+			[resource_link, add_extension(nesting, 'id'), 'id', 'Σ', '0..1', 'id', 'Logical id of this artifact'],
+			[resource_link, add_extension(nesting, 'meta'), 'meta', 'Σ', '0..1', 'Meta', 'Metadata about the resource'],
+			[resource_link, add_extension(nesting, 'implicitRules'), 'implicitRules', '?! Σ', '0..1', 'uri', 'A set of rules under which this content was created'],
+			[resource_link, add_extension(nesting, 'language'), 'language', '', '0..1', 'code', 'Language of the resource contentLanguage  (Required)'],
+		]
+		inherited_from_DomainResource = [
+			[resource_link, add_extension(nesting, 'text'), 'text', 'I', '0..1', 'Narrative', 'Text summary of the resource, for human interpretation'],
+			[resource_link, add_extension(nesting, 'contained'), 'contained', '', '0..*', 'Resource', 'Contained, inline Resources'],
+			[resource_link, add_extension(nesting, 'extension'), 'extension', '', '0..*', 'Extension', 'Additional Content defined by implementations'],
+			[resource_link, add_extension(nesting, 'modifierExtension'), 'modifierExtension', '?!', '0..*', 'Extension', 'Extensions that cannot be ignored'],
+		]
+		writer.writerows(inherited_from_Resource)
+		writer.writerows(inherited_from_DomainResource)
+		# Add resource-specific data
 		# hacky soln: keep count of every 5th <td> element, and add row then
 		count = 0
 		for tr in struct_table.find_all('tr'):
 			for td in tr.find_all('td'):
-				curr_row.append(td.text)
+				curr_row.append(td.text.strip())
 				count += 1
 				# adjust nesting on 1st item
 				if count % 5 == 1:
+					# check nesting update where item has an <a> tag to validate
 					tag = td.find('a')
-					# only handle cases where item has an <a> tag
 					if tag != None: 
 						curr_title = str(tag['title'])
-						nesting = curr_title[:curr_title.find(' ')]
-						curr_text = td.text.strip() # remove ending whitespace character
-						if nesting != curr_text:
-							curr_row[1] = nestingHeader + del_extension(nesting, curr_text)
+						curr_nesting = curr_title[:curr_title.find(' ')] # format: "Resource.dataElement"
+						curr_text = td.text.strip() # format: "dataElement"
+						# update nesting
+						if curr_text == resource_name:
+							continue # handles base case
+						if curr_nesting[curr_nesting.rfind('.'):] != curr_text:
+							nesting = nestingHeader + curr_nesting
+							curr_row[1] = del_extension(nesting)
+							# handle [x] cases
+							if curr_nesting.rfind('[x]') != -1:
+								nesting = nestingHeader + del_extension(curr_nesting)
+					curr_row[1] = add_extension(curr_row[1], td.text.strip())
 				# append row every 5th item 
 				if count % 5 == 0:
 					writer.writerow(curr_row)
@@ -78,8 +102,6 @@ def create_csv(base_url, resource_list, name, as_hyperlink=True):
 		writer.writerow(col_headers)
 		# track in progress bar
 		# add 'Resource' and 'DomainResource' to .csv first
-		parse_write_td_elements(writer, 'Resource.html', nestingHeader='')
-		parse_write_td_elements(writer, 'DomainResource.html', nestingHeader='Resource.')
 		for resource in resource_list:
 			# get request, grab table for resource
 			parse_write_td_elements(writer, resource)
