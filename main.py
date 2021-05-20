@@ -1,7 +1,6 @@
 from bs4 import BeautifulSoup
 import requests
 import csv
-import time
 import sys
 
 def get_html_body(url):
