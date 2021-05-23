@@ -1,0 +1,8 @@
+https://build.fhir.org/ig/HL7/carin-bb/StructureDefinition-C4BB-Coverage.html
+https://build.fhir.org/ig/HL7/carin-bb/StructureDefinition-C4BB-ExplanationOfBenefit-Inpatient-Institutional.html
+https://build.fhir.org/ig/HL7/carin-bb/StructureDefinition-C4BB-ExplanationOfBenefit-Outpatient-Institutional.html
+https://build.fhir.org/ig/HL7/carin-bb/StructureDefinition-C4BB-ExplanationOfBenefit-Pharmacy.html
+https://build.fhir.org/ig/HL7/carin-bb/StructureDefinition-C4BB-ExplanationOfBenefit-Professional-NonClinician.html
+https://build.fhir.org/ig/HL7/carin-bb/StructureDefinition-C4BB-Organization.html
+https://build.fhir.org/ig/HL7/carin-bb/StructureDefinition-C4BB-Patient.html
+https://build.fhir.org/ig/HL7/carin-bb/StructureDefinition-C4BB-Practitioner.html
